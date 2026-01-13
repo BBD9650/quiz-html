@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<title>1–100 題刷題系統</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",Segoe UI,Roboto,Arial;background:#0f1220;color:#fff;margin:0;padding:16px;}
+  .card{background:#1a1f33;padding:20px;border-radius:14px;max-width:980px;margin:auto;border:1px solid rgba(255,255,255,.08);}
+  .top{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  h2{margin:0;font-size:18px;}
+  .meta{opacity:.85;font-size:12px;}
+  .q{font-size:16px;line-height:1.6;margin:12px 0;white-space:pre-wrap;}
+  .option{padding:12px;border:1px solid rgba(255,255,255,.16);border-radius:10px;margin:8px 0;cursor:pointer;background:#121830;}
+  .option:hover{background:#2a315a;}
+  .correct{background:#1e7f55!important;border-color:rgba(30,127,85,.9)!important;}
+  .wrong{background:#7f1e1e!important;border-color:rgba(127,30,30,.9)!important;}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+  button,select{padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#121830;color:#fff;cursor:pointer;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  .result{margin-top:10px;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,.16);background:#121830;min-height:44px;}
+  .small{opacity:.85;font-size:12px;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid rgba(255,255,255,.16);border-radius:999px;margin-left:6px;font-size:12px;opacity:.9}
+  .screen{display:none;}
+  .screen.active{display:block;}
+  .table{width:100%;border-collapse:collapse;margin-top:10px;}
+  .table th,.table td{border-bottom:1px solid rgba(255,255,255,.12);padding:10px;vertical-align:top;}
+  .tagR{color:#7CFFB2;}
+  .tagW{color:#FF8A8A;}
+</style>
+</head>
+
+<body>
+<div class="card">
+
+  <!-- Screen: Quiz -->
+  <div id="screenQuiz" class="screen active">
+    <div class="top">
+      <div>
+        <h2 id="title"></h2>
+        <div class="meta" id="meta"></div>
+      </div>
+      <div class="btns">
+        <label class="small">出題順序：
+          <select id="orderMode" onchange="rebuildDeck()">
+            <option value="sequential">依題號</option>
+            <option value="shuffle">隨機</option>
+          </select>
+        </label>
+
+        <label class="small">對答案：
+          <select id="gradeMode">
+            <option value="immediate">立即對答案</option>
+            <option value="deferred">全部答完再對</option>
+          </select>
+        </label>
+
+        <button onclick="prev()" id="btnPrev">上一題</button>
+        <button onclick="next()" id="btnNext">下一題</button>
+        <button onclick="resetAll()">重置</button>
+      </div>
+    </div>
+
+    <div class="q" id="question"></div>
+    <div id="options"></div>
+    <div class="result" id="result"><span class="small">點選 A/B/C/D 作答（作答後會自動跳下一題）。</span></div>
+  </div>
+
+  <!-- Screen: Done -->
+  <div id="screenDone" class="screen">
+    <div class="top">
+      <div>
+        <h2>作答完成 ✅</h2>
+        <div class="meta" id="finalMeta"></div>
+      </div>
+      <div class="btns">
+        <button onclick="goReview()">查看結果/對答案</button>
+        <button onclick="restartSameDeck()">再刷一次（同順序）</button>
+        <button onclick="rebuildDeck()">重新出題（依設定）</button>
+      </div>
+    </div>
+    <div class="result" id="finalTip"></div>
+  </div>
+
+  <!-- Screen: Review -->
+  <div id="screenReview" class="screen">
+    <div class="top">
+      <div>
+        <h2>結果檢視</h2>
+        <div class="meta" id="reviewMeta"></div>
+      </div>
+      <div class="btns">
+        <button onclick="backToQuiz()">回到題目</button>
+        <button onclick="restartSameDeck()">再刷一次（同順序）</button>
+        <button onclick="rebuildDeck()">重新出題</button>
+      </div>
+    </div>
+
+    <div class="result" id="reviewTip"></div>
+    <table class="table" id="reviewTable"></table>
+  </div>
+
+</div>
+
+<script>
+/**
+ * ✅ 題庫 BANK：請把你現有的「1–100 題完整 BANK」整段貼回這裡取代
+ * 結構：{id:1, ans:"C", q:"題目", opts:{A:"",B:"",C:"",D:""}}
+ */
+const BANK = [
+  {id:1, ans:"C", q:"步兵最小之戰鬥單位，下列何者正確？", opts:{A:"步兵排",B:"步兵組",C:"步兵班",D:"步兵連"}},
+  {id:2, ans:"A", q:"步兵排之火力骨幹，下列何者正確？", opts:{A:"火力班",B:"步兵班",C:"步兵組",D:"特戰班"}},
+  {id:3, ans:"B", q:"防禦時之火力運用，通常所區分射擊階段，下列何者正確？", opts:{A:"中距離射擊",B:"陣地內射擊",C:"超距離射擊",D:"火力射擊"}},
+  {id:4, ans:"C", q:"夜間攻擊之方式，依那些因素，尤以裝備與能力而定？", opts:{A:"核心",B:"我情",C:"敵情",D:"照明度"}},
+  {id:5, ans:"C", q:"防禦基本方式何者為非？", opts:{A:"陣地防禦",B:"機動防禦",C:"據點群防禦",D:"（無）"}},
+  {id:6, ans:"A", q:"連部區分下列何者正確？", opts:{A:"指揮組及支援組",B:"戰鬥組及支援組",C:"火力組及支援組",D:"指揮組及火力支援組"}},
+  {id:7, ans:"D", q:"步兵排轄幾個步兵班。", opts:{A:"6個",B:"1個",C:"4個",D:"3個"}},
+  {id:8, ans:"B", q:"步兵連任務，在綜合發揮何種手段，以殲滅敵軍？", opts:{A:"攻擊力",B:"機動力",C:"部署力",D:"兵力"}},
+  {id:9, ans:"C", q:"攻擊時，連長可運用管制手段，下列何者正確？", opts:{A:"防禦陣地",B:"攻擊位置",C:"攻擊發起線",D:"管制線"}},
+  {id:10, ans:"B", q:"步兵連可藉那些通信方法之運用，使連長能主動有效指揮部隊？", opts:{A:"有／無線電",B:"以上皆是",C:"傳達、視號",D:"聲號"}},
+  {id:11, ans:"C", q:"連長開始其確實瞭解任務之動作為何？", opts:{A:"質疑",B:"復誦",C:"以上皆是",D:"協調"}},
+  {id:12, ans:"D", q:"機動作戰時，部隊任務編組應以何種因素考量，適時靈活調整任務編組，俾在決勝之時間地點，發揮優勢戰力？", opts:{A:"有利態勢",B:"效能",C:"敵情",D:"狀況"}},
+  {id:13, ans:"B", q:"任務編組考慮因素為何？", opts:{A:"敵情、天候、地形及可使用之兵力",B:"任務、敵情、作戰地區特性、我軍狀況、指揮掌握",C:"天候、地形及可使用之兵力",D:"地形、可使用之兵力"}},
+  {id:14, ans:"B", q:"密集隊形為車輛車距需距多少公尺？", opts:{A:"40–50公尺",B:"40–50公尺",C:"30–50公尺",D:"40–60公尺"}},
+  {id:15, ans:"B", q:"日用輜重必要時可支援戰鬥輜重，以維持連之何種能力？", opts:{A:"後勤力",B:"戰鬥持續力",C:"打擊力",D:"防禦力"}},
+  {id:16, ans:"B", q:"連長受領任務起直至作戰實施開始止，上、下級計畫整備時間分配為何？", opts:{A:"上級2/3、下級2/3",B:"上級1/3、下級2/3",C:"上級1/4、下級3/4",D:"上級1/9、下級2/9"}},
+  {id:17, ans:"A", q:"部隊機動需處置下列事項，何者正確？", opts:{A:"計畫偵察",B:"偵察計畫",C:"下達命令",D:"調動部隊"}},
+  {id:18, ans:"C", q:"連斥候亦可任連與鄰接部隊之何種任務？", opts:{A:"連繫",B:"巡邏",C:"掩護",D:"攻擊搜索"}},
+  {id:19, ans:"C", q:"戰力之發揮，端賴適切之運用哪些手段，以期對臨機狀況作迅速之處置？", opts:{A:"火力",B:"兵力",C:"掌握",D:"後勤"}},
+  {id:20, ans:"D", q:"連所屬各排通常在連長直接指揮掌握下從事戰鬥，故連長命令必須具備哪些內容條件？", opts:{A:"簡單、具體",B:"詳實、簡潔",C:"詳實、扼要",D:"詳實、具體"}},
+  {id:21, ans:"C", q:"連長迅速下達適切之命令與必要指示，使下屬能提早妥善運用哪些因素，從事各項作戰準備工作？", opts:{A:"時間",B:"可用兵力",C:"時間、人員",D:"建制、增援、直接支援及一般支援"}},
+  {id:22, ans:"B", q:"遭敵空襲、化生放核攻擊、地面攻擊等警報，通常以何種手段警示？", opts:{A:"旗號通信",B:"聲號通信",C:"有限度通信",D:"戰鬥通信"}},
+  {id:23, ans:"D", q:"連長受領任務後，必須儘速確認命令與任務之內容，即開始依照那些因素等進行分析過程，以奠定爾後作戰計畫擬定？", opts:{A:"天候、地形",B:"任務、敵情",C:"天候、地形及可使用之兵力",D:"時間、任務、地形、敵情"}},
+  {id:24, ans:"C", q:"連長完成初步時間管制、分析那些因素後，結合上級作戰整備事項完成預備命令，並召集連部組及各排排長以表格或口述方式下達？", opts:{A:"地形、天候、敵情、任務",B:"地形、天候",C:"地形、天候、敵情、任務分析",D:"敵情、準則"}},
+  {id:25, ans:"B", q:"通常連與空中連絡之信號為何？", opts:{A:"火力通信",B:"鋪設布板",C:"信記號",D:"手臂記號"}},
+  {id:26, ans:"A", q:"防禦時，以何種通信手段為主？", opts:{A:"有線電及傳令",B:"無線電",C:"傳令",D:"手臂記號"}},
+  {id:27, ans:"D", q:"攻擊時，以何種通信手段為主？", opts:{A:"有線電及傳令",B:"無線電",C:"傳令",D:"無線電及傳令"}},
+  {id:28, ans:"B", q:"連建制戰鬥支援部隊為何？", opts:{A:"步兵排",B:"60迫擊砲組",C:"通信排",D:"81迫擊砲排"}},
+  {id:29, ans:"D", q:"受領任務的步驟何者為非？", opts:{A:"確實瞭解任務",B:"擬定初步時間管制",C:"分析地形、天候、敵情",D:"完成正式命令"}},
+  {id:30, ans:"B", q:"下達預備命令的步驟何者為非？", opts:{A:"當面敵情／當前敵情及上級任務",B:"上級任務",C:"執行",D:"下達預備命令"}},
+  {id:31, ans:"B", q:"擬定初步計畫的步驟何者為非？", opts:{A:"各部隊任務及編組",B:"戰鬥隊形",C:"支援部隊運用",D:"警戒措施"}},
+  {id:32, ans:"A", q:"部隊機動時處置事項的步驟何者為非？", opts:{A:"規劃偵察",B:"計畫下達命令",C:"部隊調動",D:"圖上偵查"}},
+  {id:33, ans:"D", q:"機動作戰時，何種方式為主要通信手段？", opts:{A:"有線電",B:"傳令",C:"旗號",D:"無線電"}},
+  {id:34, ans:"C", q:"連派出之斥候，下列何種正確？", opts:{A:"聯繫斥候",B:"攻擊斥候",C:"警戒斥候",D:"防禦斥候"}},
+  {id:35, ans:"A", q:"警戒所用兵力…通常最高不宜超過建制部隊多少？", opts:{A:"1/3",B:"1/9",C:"2/3",D:"2/9"}},
+  {id:36, ans:"D", q:"選擇適當地點建立觀測所…以免遭敵襲擊？", opts:{A:"秘密、靜觀",B:"警戒、戒備",C:"秘匿、秘密",D:"秘匿、戒備"}},
+  {id:37, ans:"A", q:"警戒所用兵力…通常最少不宜低於建制部隊多少為原則？", opts:{A:"1/9",B:"1/3",C:"2/3",D:"2/9"}},
+  {id:38, ans:"C", q:"適切管制部隊行動…以減少連之危害？", opts:{A:"駐止間警戒",B:"陣中要務",C:"掩蔽、偽裝、疏散、夜間措施",D:"夜間搜索"}},
+  {id:39, ans:"C", q:"行軍依速度區分何者正確？", opts:{A:"戰術行軍",B:"戰鬥行軍",C:"急行軍",D:"行政行軍"}},
+  {id:40, ans:"D", q:"連長須派遣何種部隊，保持本隊與尖兵排之連絡。", opts:{A:"前衛",B:"側衛",C:"後衛",D:"連絡伍"}},
+  {id:41, ans:"C", q:"攻擊基本方式何者為非？", opts:{A:"包圍",B:"迂迴",C:"奇襲",D:"正面"}},
+  {id:42, ans:"B", q:"攻擊階段何者為非？", opts:{A:"攻擊準備",B:"行軍運動",C:"攻擊實施",D:"接敵運動"}},
+  {id:43, ans:"D", q:"攻擊重點，集中絕對優勢之兵力、火力、衝擊力與精神力，形成攻擊重點，下列何者為非？", opts:{A:"兵力",B:"火力",C:"衝擊力",D:"後勤力"}},
+  {id:44, ans:"A", q:"連局部警戒班派遣遠距離…距主陣地帶前緣多少公尺內？", opts:{A:"600公尺",B:"200公尺",C:"400公尺",D:"800公尺"}},
+  {id:45, ans:"D", q:"陣地編成應著眼於何種考量，避免敵火損害及妨害敵之機動，發揮陣地之整體功效？", opts:{A:"協調阻絕",B:"周詳準備",C:"適切利用地形",D:"火力之發揚"}},
+  {id:46, ans:"D", q:"局部警戒或戰鬥前哨使用何種通信手段？", opts:{A:"有線電通信",B:"聲視號",C:"傳令",D:"無線電通信"}},
+  {id:47, ans:"B", q:"戰鬥支援方式，下列何者正確？", opts:{A:"一般支援",B:"以上皆是",C:"直接支援",D:"配屬"}},
+  {id:48, ans:"A", q:"擔任行軍、攻擊、防禦及轉進作戰中之何種部隊為主？", opts:{A:"掩護（收容）部隊",B:"主力部隊",C:"後勤部隊",D:"主攻部隊"}},
+  {id:49, ans:"A", q:"機步連的限制下列何者為非？", opts:{A:"不須較多且複雜的後勤支援",B:"當車門關閉後，視界受限制",C:"當制空權或局部空優未獲得時，機動常受限制",D:"地形開闊"}},
+  {id:50, ans:"B", q:"機械化步兵排與戰車、砲、工協同，可遂行何種任務？", opts:{A:"反滲透",B:"反滲透及反空（機）降",C:"反空（機）降",D:"反裝甲"}},
+
+  {id:51, ans:"C", q:"追擊炮排射擊命令應納入何種層級火力支援計畫管制？", opts:{A:"連火力支援計畫。",B:"旅火力支援計畫。",C:"營火力支援計畫。",D:"班火力支援計畫。"}},
+  {id:52, ans:"D", q:"指揮關係區分何者正確？", opts:{A:"一般支援。",B:"增援。",C:"支援。",D:"配屬。"}},
+  {id:53, ans:"C", q:"「戰鬥隊」由幾個不同單位編成？", opts:{A:"2 個連部、2–5 個戰鬥排。",B:"1 個連部、2 個戰鬥排。",C:"1 個連部、2–5 個戰鬥排。",D:"1 個連部、2 個戰鬥排。"}},
+  {id:54, ans:"C", q:"任務編組型態，分為哪幾種？", opts:{A:"主從編組。",B:"其他編組。",C:"主從編組、平衡編組。",D:"屬性編組。"}},
+  {id:55, ans:"B", q:"受領任務實施步驟為何？", opts:{A:"確實瞭解敵情。",B:"確實瞭解任務。",C:"擬定初步作戰計畫。",D:"分析作戰態勢。"}},
+  {id:56, ans:"B", q:"步兵連攻擊時預備隊與主攻部隊幾公尺？", opts:{A:"60 公尺。",B:"150 公尺。",C:"170 公尺。",D:"90 公尺。"}},
+  {id:57, ans:"C", q:"連長受命後，依據敵情上級任務實施狀況分析、判斷，擬定初步行動構想需包含哪些事項何者正確？", opts:{A:"各行軍部隊編組。",B:"戰鬥配置。",C:"戰鬥隊形。",D:"建制部隊運用。"}},
+  {id:58, ans:"D", q:"依據命令與準備事項督導下級作戰準備，下列實施的步驟何者為正確？", opts:{A:"作戰準備及沙盤推演。",B:"戰備檢查及模型推演。",C:"戰前檢查及沙盤推演。",D:"戰備檢查及沙盤推演。"}},
+  {id:59, ans:"C", q:"戰力之發揮，端賴適切之運用哪些手段，以期對臨機狀況作迅速之處置？", opts:{A:"火力。",B:"兵力。",C:"掌握。",D:"後勤。"}},
+  {id:60, ans:"D", q:"步兵連正面防禦通常距離多少公尺？", opts:{A:"300–600 公尺。",B:"150–400 公尺。",C:"170–300 公尺。",D:"600–1200 公尺。"}},
+  {id:61, ans:"B", q:"連以何種通信連絡為主，以利部隊掌握？", opts:{A:"有線電通信連絡。",B:"無線電通信連絡。",C:"信記號。",D:"戰鬥命令。"}},
+  {id:62, ans:"B", q:"機步連於執行作戰任務編組變更時，通常使用何種命令行之？", opts:{A:"指揮命令。",B:"個別命令。",C:"預備命令。",D:"戰鬥命令。"}},
+  {id:63, ans:"C", q:"為肆應現代戰爭要求，連長通常可運用何種應變成之任務或目標，使所屬部隊能依狀況而迅速執行之？", opts:{A:"複雜指示。",B:"快速指示。",C:"簡明指示。",D:"扼要指示。"}},
+  {id:64, ans:"B", q:"部隊指揮重點為何？連長不論任何時間地點，應以身作則，嚴整紀律，奠定指揮功能？", opts:{A:"火力。",B:"軍紀。",C:"兵力。",D:"教戰守則。"}},
+  {id:65, ans:"A", q:"連無線電網之構成，可分為連指揮網及排指揮網，連輔助則加入何種層級行政網？", opts:{A:"營行政網。",B:"排行政網。",C:"旅行政網。",D:"連行政網。"}},
+  {id:66, ans:"D", q:"有線電較無線電易於保密，通常於何種作戰時使用？", opts:{A:"行軍或攻擊。",B:"行軍或防禦。",C:"攻擊或防禦。",D:"集結（宿營）或防禦。"}},
+  {id:67, ans:"B", q:"何者為戰鬥支援部隊？", opts:{A:"步兵。",B:"工兵。",C:"裝甲兵。",D:"機械化步兵。"}},
+  {id:68, ans:"B", q:"具高度的機動力，可行快速分合運動與有限度之越野能力，狀況許可，亦能徒涉？", opts:{A:"作戰能力。",B:"越野能力。",C:"防空能力。",D:"戰技能力。"}},
+  {id:69, ans:"D", q:"受領任務的步驟何者為非？", opts:{A:"確實瞭解任務。",B:"擬定初步時間管制。",C:"分析地形、天候、敵情。",D:"完成正式命令。"}},
+  {id:70, ans:"B", q:"下達預備命令的內容何者為非？", opts:{A:"當面敵情。",B:"下級任務。",C:"執行。",D:"上級任務。"}},
+  {id:71, ans:"C", q:"擬定初步計畫的內容何者為非？", opts:{A:"各部隊任務及編組。",B:"戰鬥隊形。",C:"支援部隊運用。",D:"警戒措施。"}},
+  {id:72, ans:"A", q:"處置下列事項的步驟何者為非？", opts:{A:"規劃偵察。",B:"計畫下達命令。",C:"部隊調動。",D:"計畫偵察。"}},
+  {id:73, ans:"B", q:"何種要素為指揮官左右戰局主宰戰場之重要手段，故應妥為計畫保持機動，以配合兵力運用計畫？", opts:{A:"隊形。",B:"火力。",C:"戰鬥程序。",D:"行動程序。"}},
+  {id:74, ans:"D", q:"戰鬥間之火力運用，以何種火力為優先，連長應充分運用其本身之機炮火力，配合上級火力支援，殲滅敵軍？", opts:{A:"轉移火力。",B:"機槍火力。",C:"車裝火力。",D:"壓制火力。"}},
+  {id:75, ans:"C", q:"輜重通常區分為哪幾類？", opts:{A:"戰鬥輜重。",B:"戰鬥輜重與行政輜重。",C:"戰鬥輜重與日用輜重。",D:"行政輜重與日用輜重。"}},
+  {id:76, ans:"C", q:"情報蒐集範圍何者為非？", opts:{A:"敵情。",B:"天候。",C:"商情。",D:"戰地人文。"}},
+  {id:77, ans:"C", q:"情報作業程序何者為非？", opts:{A:"指導。",B:"蒐集。",C:"修正。",D:"分發與運用。"}},
+  {id:78, ans:"B", q:"機步部隊於適當加強其偵測器材後，可擔任任務何者為非？", opts:{A:"道路搜索。",B:"威力搜索。",C:"局地搜索。",D:"區域搜索。"}},
+  {id:79, ans:"D", q:"觀測通常在監視敵情、觀察地形、測度天候及射擊觀測等，主在運用何種行動要領，觀察敵之行動，尋求破敵之機？", opts:{A:"一面展、一面想、一面打。",B:"一面看、一面打。",C:"一面看、一面想、一面修正。",D:"一面看、一面想、一面打。"}},
+  {id:80, ans:"A", q:"運用敵無法克服之天然障礙，作為我之掩護，以節約兵力，連於戰鬥時，通常採取下列何種手段，維護自身安全？", opts:{A:"火力掩護。",B:"火力戰場。",C:"戰場掩護。",D:"交互掩護。"}},
+  {id:81, ans:"C", q:"機步連主要通信手段為何？", opts:{A:"有線電。",B:"信記號。",C:"無線電。",D:"手臂記號。"}},
+  {id:82, ans:"C", q:"指揮關係分為哪幾類？", opts:{A:"建制、編配、配屬及支援。",B:"建制、編配、配屬及鄰接友軍。",C:"建制、編配、配屬及作戰管制。",D:"建制、增援、直接支援及一般支援。"}},
+  {id:83, ans:"D", q:"連之行軍隊形，下列何者正確？", opts:{A:"V 隊形。",B:"三角隊形。",C:"戰鬥隊形。",D:"滲透隊形。"}},
+  {id:84, ans:"B", q:"密集隊形為車輛密度每公里多少輛？", opts:{A:"10 輛。",B:"20 輛。",C:"30 輛。",D:"40 輛。"}},
+  {id:85, ans:"C", q:"行軍依速度區分何者正確？", opts:{A:"戰術行軍。",B:"行政行軍。",C:"急行軍。",D:"戰鬥行軍。"}},
+  {id:86, ans:"D", q:"連可擔任上級之警戒部隊，其任務概可區分何者正確？", opts:{A:"前哨。",B:"戰鬥搜索。",C:"戰鬥巡邏。",D:"後衛。"}},
+  {id:87, ans:"C", q:"攻擊基本方式何者為非？", opts:{A:"包圍。",B:"迂迴。",C:"奇襲。",D:"正面。"}},
+  {id:88, ans:"B", q:"攻擊階段何者為非？", opts:{A:"攻擊準備。",B:"行軍運動。",C:"攻擊實施。",D:"接敵運動。"}},
+  {id:89, ans:"D", q:"攻擊時，應充分發揮機械化步兵連特性，以旺盛之企圖心，遂行機動殲敵，其基本要領何者為非？", opts:{A:"側面選點。",B:"乘虛蹈隙。",C:"迅速斷線。",D:"正面交戰。"}},
+  {id:90, ans:"C", q:"下車戰鬥時機何者錯誤？", opts:{A:"敵火對機砲戰鬥車產生危害，無法乘車前進時。",B:"地形限制乘車攻擊時。",C:"地形通行良好。",D:"清除反甲車障礙物，或清除敵戰防武器時。"}},
+  {id:91, ans:"A", q:"連局部警戒之部署，應依上級之全般警戒計畫，並協調鄰接友軍派遣之。其位置通常距主陣地前約？公尺之直射武器支援掩護及通信掌握距離內。", opts:{A:"400–600 公尺。",B:"100–200 公尺。",C:"800–2000 公尺。",D:"100–300 公尺。"}},
+  {id:92, ans:"D", q:"連防禦計畫作為，陣地編成與實施，須考慮下列事項何者錯誤？", opts:{A:"協調之火力與阻絕。",B:"周詳準備。",C:"適切利用地形。",D:"利用兵力。"}},
+  {id:93, ans:"B", q:"防禦時之火力運用，通常所區分射擊階段，下列何者錯誤？", opts:{A:"遠距離射擊。",B:"遠端射擊。",C:"近距離射擊。",D:"防護射擊。"}},
+  {id:94, ans:"D", q:"逆襲要領，下列何者錯誤？", opts:{A:"阻止尖端。",B:"固守局部。",C:"封鎖底部。",D:"反擊腰部。"}},
+  {id:95, ans:"D", q:"連之行軍隊形分為幾種？", opts:{A:"疏散隊形。",B:"密集隊形。",C:"滲透隊形。",D:"以上皆是。"}},
+  {id:96, ans:"C", q:"以何種通信手段為主要之工具，有線電及傳令、聲、視號通信為輔，並講求交替、重疊使用，相互配合，確保通信連絡之暢通？", opts:{A:"有線電。",B:"信記號。",C:"無線電。",D:"手臂記號。"}},
+  {id:97, ans:"B", q:"防空區分何者正確？", opts:{A:"部隊防空。",B:"積極防空。",C:"消極防空。",D:"（無）"}},
+  {id:98, ans:"A", q:"機步部隊戰鬥隊形可區分乘車戰鬥隊形及何種隊形兩大類？", opts:{A:"下車戰鬥隊形。",B:"三角隊形。",C:"縱隊。",D:"V 隊形。"}},
+  {id:99, ans:"B", q:"疏散隊形為車輛密度每公里幾輛？", opts:{A:"30 輛。",B:"10 輛。",C:"20 輛。",D:"40 輛。"}},
+  {id:100, ans:"C", q:"疏散隊形車輛間隔車距幾公尺？", opts:{A:"40–50 公尺。",B:"40–50 公尺。",C:"80–100 公尺。",D:"40–60 公尺。"}}
+];
+
+// ---------------- Engine ----------------
+let deck = [];
+let idx = 0;
+let answered = {}; // { [id]: {pick:"A", isRight:true/false} }
+let lastBuiltDeckSnapshot = []; // for "再刷一次（同順序）"
+
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function setScreen(name){
+  ["screenQuiz","screenDone","screenReview"].forEach(id=>{
+    document.getElementById(id).classList.remove("active");
+  });
+  document.getElementById(name).classList.add("active");
+}
+
+function rebuildDeck(){
+  const orderMode = document.getElementById("orderMode").value;
+  deck = (orderMode === "shuffle") ? shuffle(BANK) : BANK.slice();
+  lastBuiltDeckSnapshot = deck.map(x=>x.id);
+  idx = 0;
+  answered = {};
+  setScreen("screenQuiz");
+  load();
+}
+
+function restartSameDeck(){
+  // rebuild by snapshot id order
+  const map = new Map(BANK.map(x=>[x.id,x]));
+  deck = lastBuiltDeckSnapshot.map(id=>map.get(id)).filter(Boolean);
+  idx = 0;
+  answered = {};
+  setScreen("screenQuiz");
+  load();
+}
+
+function resetAll(){
+  answered = {};
+  idx = 0;
+  setScreen("screenQuiz");
+  load();
+}
+
+function stats(){
+  const done = Object.keys(answered).length;
+  const correct = Object.values(answered).filter(x=>x.isRight).length;
+  const wrong = done - correct;
+  return {done, correct, wrong, total: deck.length};
+}
+
+function load(){
+  const item = deck[idx];
+  const s = stats();
+
+  document.getElementById("title").innerText = `第 ${item.id} 題（第 ${idx+1}/${s.total} 題）`;
+  document.getElementById("meta").innerHTML =
+    `已答：<span class="mono">${s.done}</span>｜✅ <span class="mono">${s.correct}</span>｜❌ <span class="mono">${s.wrong}</span>`;
+
+  document.getElementById("question").innerText = item.q;
+
+  const optBox = document.getElementById("options");
+  optBox.innerHTML = "";
+
+  ["A","B","C","D"].forEach(k=>{
+    const d = document.createElement("div");
+    d.className = "option";
+    d.innerHTML = `<span class="mono">${k}.</span> ${escapeHtml(item.opts?.[k] ?? "（無）")}`;
+    d.onclick = () => choose(k, d);
+    optBox.appendChild(d);
+  });
+
+  // 如果回到已作答題（例如按上一題），視模式顯示
+  const r = document.getElementById("result");
+  const prev = answered[item.id];
+  if(prev){
+    applyAnsweredUI(item, prev);
+  }else{
+    r.innerHTML = `<span class="small">點選 A/B/C/D 作答（作答後會自動跳下一題）。</span>`;
+  }
+
+  document.getElementById("btnPrev").disabled = (idx<=0);
+  document.getElementById("btnNext").disabled = (idx>=deck.length-1);
+}
+
+function choose(pick, el){
+  const item = deck[idx];
+  const mode = document.getElementById("gradeMode").value; // immediate / deferred
+  const isRight = (pick === item.ans);
+  answered[item.id] = {pick, isRight};
+
+  if(mode === "immediate"){
+    // 立即對答案：顯示對錯+正解，再自動跳下一題
+    applyAnsweredUI(item, answered[item.id], el);
+    autoNext();
+  }else{
+    // 全部答完再對：不顯示正解/對錯，只記錄並直接跳下一題
+    document.getElementById("result").innerHTML =
+      `已作答：<span class="mono">${pick}</span> <span class="pill">不立即對答案</span>`;
+    lockOptions(); // 仍鎖定避免重複點造成奇怪行為
+    autoNext(120); // 更快跳
+  }
+}
+
+function applyAnsweredUI(item, prev, clickedEl){
+  // lock
+  lockOptions();
+
+  // color
+  const nodes = Array.from(document.querySelectorAll(".option"));
+  const pickIndex = ["A","B","C","D"].indexOf(prev.pick);
+  const ansIndex  = ["A","B","C","D"].indexOf(item.ans);
+
+  if(pickIndex>=0) nodes[pickIndex].classList.add(prev.isRight ? "correct" : "wrong");
+  if(!prev.isRight && ansIndex>=0) nodes[ansIndex].classList.add("correct");
+
+  // result text
+  const r = document.getElementById("result");
+  r.innerHTML = prev.isRight
+    ? `✅ 正確（你的答案：<span class="mono">${prev.pick}</span>）`
+    : `❌ 錯誤（你的答案：<span class="mono">${prev.pick}</span>｜正確：<span class="mono">${item.ans}</span>）`;
+
+  // refresh meta
+  const s = stats();
+  document.getElementById("meta").innerHTML =
+    `已答：<span class="mono">${s.done}</span>｜✅ <span class="mono">${s.correct}</span>｜❌ <span class="mono">${s.wrong}</span>`;
+}
+
+function lockOptions(){
+  document.querySelectorAll(".option").forEach(x=>x.onclick=null);
+}
+
+function autoNext(delay=450){
+  // 最後一題：直接進完成畫面
+  if(idx >= deck.length-1){
+    setTimeout(finish, delay);
+    return;
+  }
+  setTimeout(()=>{ idx++; load(); }, delay);
+}
+
+function next(){
+  if(idx < deck.length-1){ idx++; load(); }
+}
+function prev(){
+  if(idx > 0){ idx--; load(); }
+}
+
+function finish(){
+  const mode = document.getElementById("gradeMode").value;
+  const s = stats();
+
+  setScreen("screenDone");
+
+  // immediate 模式已知道分數；deferred 模式也可以算（只是沒顯示而已）
+  document.getElementById("finalMeta").innerHTML =
+    `共 <span class="mono">${s.total}</span> 題｜已作答 <span class="mono">${s.done}</span> 題`;
+
+  if(mode === "immediate"){
+    document.getElementById("finalTip").innerHTML =
+      `你已完成全部作答。成績：✅ <span class="mono">${s.correct}</span>｜❌ <span class="mono">${s.wrong}</span>`;
+  }else{
+    document.getElementById("finalTip").innerHTML =
+      `你已完成全部作答。現在可以按「查看結果/對答案」一次對答案。<span class="pill">全部答完再對</span>`;
+  }
+}
+
+function goReview(){
+  // 產生檢視表
+  setScreen("screenReview");
+
+  const s = stats();
+  document.getElementById("reviewMeta").innerHTML =
+    `總題數 <span class="mono">${s.total}</span>｜✅ <span class="mono">${s.correct}</span>｜❌ <span class="mono">${s.wrong}</span>`;
+
+  document.getElementById("reviewTip").innerHTML =
+    `表格中會顯示：你的答案 vs 正確答案。錯題一眼抓出來。`;
+
+  const tbl = document.getElementById("reviewTable");
+  tbl.innerHTML = `
+    <thead>
+      <tr>
+        <th style="width:72px">題號</th>
+        <th>題目</th>
+        <th style="width:150px">你的答案</th>
+        <th style="width:150px">正確答案</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = tbl.querySelector("tbody");
+
+  deck.forEach(item=>{
+    const a = answered[item.id];
+    const pick = a?.pick ?? "（未答）";
+    const isRight = a?.isRight ?? false;
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="mono">${item.id} ${a ? (isRight ? '<span class="tagR">✅</span>' : '<span class="tagW">❌</span>') : ''}</td>
+      <td>${escapeHtml(item.q)}</td>
+      <td class="mono">${escapeHtml(pick)}</td>
+      <td class="mono">${escapeHtml(item.ans)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function backToQuiz(){
+  setScreen("screenQuiz");
+  // 回到第一題（也可以改成回到最後題）
+  idx = 0;
+  load();
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+// init
+(function init(){
+  // 若你 BANK 是 1–100，就會直接跑起來；示範題庫也能跑
+  rebuildDeck();
+})();
+</script>
+</body>
+</html>
